@@ -93,8 +93,8 @@ def search_actors(query,client=None):
 
 
 def tmdb_actor(c,person_id):
-    from discovery import GENRES
-    p=c.tmdb('person/'+str(person_id),append_to_response='combined_credits,images')
+    from discovery import GENRES,review_keywords
+    p=c.tmdb('person/'+str(person_id),append_to_response='combined_credits,images,translations')
     works=[]
     for w in (p.get('combined_credits') or {}).get('cast',[]):
         if w.get('adult'):continue
@@ -104,8 +104,40 @@ def tmdb_actor(c,person_id):
         works.append(dict(title=title,year=date[:4],genres=[GENRES[g] for g in w.get('genre_ids',[]) if g in GENRES],genre_ids=w.get('genre_ids',[]),poster='https://image.tmdb.org/t/p/w342'+w['poster_path'] if w.get('poster_path') else '',vote_average=w.get('vote_average',0),vote_count=w.get('vote_count',0),popularity=w.get('popularity',0),source='TMDb',url=f"https://www.themoviedb.org/{kind}/{w['id']}",id=str(w['id']),media_type=kind,role=w.get('character','')))
     unique={(w['media_type'],w['id']):w for w in works};works=sorted(unique.values(),key=lambda w:(int(w['vote_count'])>=50, float(w['popularity']),int(w['vote_count'])),reverse=True)[:80]
     images=[{'photo_url':'https://image.tmdb.org/t/p/w500'+i['file_path'],'source':'tmdb','source_id':str(person_id)} for i in (p.get('images') or {}).get('profiles',[])[:30] if i.get('file_path')]
-    info={k:v for k,v in {'生日':p.get('birthday'),'出生地':p.get('place_of_birth'),'IMDb':p.get('imdb_id')}.items() if v}
-    return {'name':p.get('name',''),'source':'tmdb','source_id':str(person_id),'aliases':p.get('also_known_as',[]),'biography':p.get('biography',''),'avatar':'https://image.tmdb.org/t/p/w500'+p['profile_path'] if p.get('profile_path') else '', 'works':works,'photos':images,'info':info,'sources':[{'label':'TMDb · 人物与作品','url':f'https://www.themoviedb.org/person/{person_id}'}]}
+    # Chinese biography is often missing; fall back to verified translations instead of showing nothing.
+    biography=p.get('biography','')
+    if not biography:
+        translations=(p.get('translations') or {}).get('translations',[])
+        for lang in ('en-US','en','ja','zh-CN','zh-TW'):
+            for t in translations:
+                if t.get('iso_639_1')==lang and t.get('data',{}).get('biography'):
+                    biography=t['data']['biography'];break
+            if biography:break
+    departments={'Acting':'表演','Directing':'导演','Production':'制片','Writing':'编剧','Art':'美术','Sound':'音乐','Camera':'摄影','Crew':'剧组','Editing':'剪辑','Costume & Make-Up':'服装化妆'}
+    info={k:v for k,v in {'生日':p.get('birthday'),'逝世':p.get('deathday'),'出生地':p.get('place_of_birth'),'职业领域':departments.get(p.get('known_for_department') or '',p.get('known_for_department') or ''),'IMDb':p.get('imdb_id')}.items() if v}
+    # Aggregate audience reception from verified ratings and public review samples only.
+    rated=[w for w in works if (w.get('vote_count') or 0)>=50 and float(w.get('vote_average') or 0)>0]
+    acclaim={}
+    if rated:
+        votes=sum(int(w['vote_count']) for w in rated)
+        average=sum(float(w['vote_average'])*int(w['vote_count']) for w in rated)/max(1,votes)
+        top=max(rated,key=lambda w:(float(w['vote_average']),int(w['vote_count'])))
+        acclaim=dict(rated_count=len(rated),high_rated=sum(1 for w in rated if float(w['vote_average'])>=8),avg_rating=round(average,1),vote_total=votes,top_work=dict(title=top['title'],score=float(top['vote_average'])))
+        performance=[];hit=0;sample=0;sources=[]
+        for w in sorted(works,key=lambda x:int(x.get('vote_count') or 0),reverse=True)[:2]:
+            if int(w.get('vote_count') or 0)<100:continue
+            kind='tv' if w.get('media_type')=='tv' else 'movie'
+            try:reviews=c.tmdb(f"{kind}/{w['id']}/reviews",language='en-US').get('results',[])
+            except (OSError,ValueError):continue
+            sample+=len(reviews)
+            labels=[l['label'] for l in review_keywords(reviews) if l['label'] not in performance]
+            if labels:hit+=1;performance.extend(labels)
+            if reviews:sources.append({'label':'TMDb · 公开评论','url':f"https://www.themoviedb.org/{kind}/{w['id']}/reviews"})
+        if performance:
+            acclaim['performance_labels']=performance
+            acclaim['performance_evidence']=f'已抽查 {sample} 条公开评论样本，{hit} 部代表作明确出现好评；仅代表已获取样本'
+            acclaim['performance_sources']=sources
+    return {'name':p.get('name',''),'source':'tmdb','source_id':str(person_id),'aliases':p.get('also_known_as',[]),'biography':biography,'avatar':'https://image.tmdb.org/t/p/w500'+p['profile_path'] if p.get('profile_path') else '', 'works':works,'photos':images,'info':info,'acclaim':acclaim,'sources':[{'label':'TMDb · 人物与作品','url':f'https://www.themoviedb.org/person/{person_id}'}]}
 
 
 def wikidata_actor(c,entity_id):
@@ -119,7 +151,12 @@ def wikidata_actor(c,entity_id):
     works_data=c.entities(works_ids)
     genre_ids=list(dict.fromkeys(v['id'] for w in works_data.values() for v in values(w,'P136') if isinstance(v,dict) and v.get('id')))
     occupations=[v['id'] for v in values(entity,'P106') if isinstance(v,dict) and v.get('id')]
-    labels=c.entities(genre_ids+occupations)
+    award_ids=[v['id'] for v in values(entity,'P166') if isinstance(v,dict) and v.get('id')][:8]
+    labels=c.entities(genre_ids+occupations+award_ids)
+    award_names=[]
+    for aid in award_ids:
+        name=label(labels.get(aid,{}))
+        if name and name not in award_names:award_names.append(name)
     works=[]
     ordered=sorted(works_data.items(),key=lambda pair:(pair[0] in [v.get('id') for v in values(entity,'P800') if isinstance(v,dict)],len(pair[1].get('sitelinks',{}))),reverse=True)
     for wid,w in ordered:
@@ -150,7 +187,7 @@ def wikidata_actor(c,entity_id):
     avatar=images[0] if images and str(images[0]).startswith('https://') else commons_image(images[0]) if images else ''
     aliases=core.unique_actor_names([*[x.get('value','') for x in entity.get('labels',{}).values()],*[a['value'] for lang in ['zh','zh-hans','en','ja'] for a in entity.get('aliases',{}).get(lang,[])[:12]]])
     genre_ids=list(dict.fromkeys(g for w in works for g in w['genre_ids']))
-    return {'name':label(entity),'source':'wikidata','source_id':entity_id,'aliases':aliases,'avatar':avatar,'biography':bio,'works':works,'keywords':keywords(bio,refs=sources)+job_tags,'sources':sources,'warnings':warnings,'wikidata_genres':genre_ids,'info':{**({'生日':str(values(entity,'P569')[0].get('time',''))[1:11]} if values(entity,'P569') else {}),**({'IMDb':imdb} if imdb else {})}}
+    return {'name':label(entity),'source':'wikidata','source_id':entity_id,'aliases':aliases,'avatar':avatar,'biography':bio,'works':works,'keywords':keywords(bio,refs=sources)+job_tags,'sources':sources,'warnings':warnings,'wikidata_genres':genre_ids,'awards':award_names[:6],'info':{**({'生日':str(values(entity,'P569')[0].get('time',''))[1:11]} if values(entity,'P569') else {}),**({'IMDb':imdb} if imdb else {})}}
 
 
 def matching_person(candidate,query_names):
@@ -225,14 +262,17 @@ def fetch_actor(candidate,client=None):
                 except (OSError,ValueError):continue
             if any(p.get('works') for p in parts):break
     if not parts:raise ValueError('多来源及已知别名未找到可确认的公开作品；资料库内作品、照片和收藏均保留。可搜索完整姓名后选择具体人物。')
-    result=dict(parts[0]);result.update(sources=[],warnings=warnings,keywords=[],works=[],photos=[])
+    result=dict(parts[0]);result.update(sources=[],warnings=[],keywords=[],works=[],photos=[],acclaim={},awards=[])
     for part in parts:
         result['sources'].extend(part.get('sources',[]));result['keywords'].extend(part.get('keywords',[]));result['works'].extend(part.get('works',[]));result['photos'].extend(part.get('photos',[]));result['warnings'].extend(part.get('warnings',[]))
         if part.get('biography') and len(part['biography'])>len(result.get('biography','')):result['biography']=part['biography']
         if not result.get('avatar'):result['avatar']=part.get('avatar','')
+        if part.get('acclaim') and not result['acclaim']:result['acclaim']=part['acclaim']
+        result['awards'].extend(str(a) for a in part.get('awards',[]) if str(a) not in result['awards'])
         if part.get('source')=='wikidata':
             result['wikidata_id']=part['source_id'];result['wikidata_genres']=part.get('wikidata_genres',[])
         if part.get('source')=='tmdb':result['tmdb_id']=part['source_id']
+    result['awards']=result['awards'][:8]
     result['fetched_at']=core.now_iso();return result
 
 
@@ -242,11 +282,11 @@ def similar_candidates(profile):
         genres=collections.Counter(g for w in data.get('works',[]) for g in w.get('genre_ids',[]) if isinstance(g,int))
         movie_ids=[]
         for genre,n in genres.most_common(2):
-            try:movie_ids.extend(w['id'] for w in c.tmdb('discover/movie',with_genres=str(genre),sort_by='popularity.desc',include_adult='false',**{'vote_count.gte':100}).get('results',[])[:3])
+            try:movie_ids.extend(w['id'] for w in c.tmdb('discover/movie',with_genres=str(genre),sort_by='popularity.desc',include_adult='false',**{'vote_count.gte':100}).get('results',[])[:4])
             except (OSError,ValueError):warnings.append('部分同类影片暂未取得')
-        for mid in list(dict.fromkeys(movie_ids))[:6]:
+        for mid in list(dict.fromkeys(movie_ids))[:8]:
             try:
-                for p in c.tmdb(f'movie/{mid}/credits').get('cast',[])[:5]:
+                for p in c.tmdb(f'movie/{mid}/credits').get('cast',[])[:6]:
                     if str(p['id'])==str(data['tmdb_id']) or p.get('adult'):continue
                     pool.setdefault(('tmdb',p['id']),dict(name=p['name'],source='tmdb',source_id=str(p['id']),avatar='https://image.tmdb.org/t/p/w342'+p['profile_path'] if p.get('profile_path') else ''))
             except (OSError,ValueError):warnings.append('部分候选演员未能取得')
@@ -267,7 +307,7 @@ def similar_candidates(profile):
         for fid,film in film_data.items():
             for v in values(film,'P161')[:8]:
                 if isinstance(v,dict) and v.get('id') and v['id']!=own:actors[v['id']]+=3 if fid in own_works else 1
-        people={};actor_ids=[aid for aid,n in actors.most_common(12)]
+        people={};actor_ids=[aid for aid,n in actors.most_common(16)]
         for offset in range(0,len(actor_ids),6):
             try:people.update(c.entities(actor_ids[offset:offset+6]))
             except (OSError,ValueError):warnings.append('部分候选演员资料暂未取得')

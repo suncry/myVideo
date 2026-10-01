@@ -1,7 +1,7 @@
 import json,tempfile,unittest
 from pathlib import Path
 from unittest import mock
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication,QLabel
 import app as core,discovery,public_sources,desktop,privacy
 
 
@@ -92,12 +92,75 @@ class DiscoveryTests(unittest.TestCase):
   client.requests=60
   with self.assertRaisesRegex(ValueError,'限额'):client.get('https://example.test')
 
- def test_recommendation_refresh_reuses_confirmed_cached_actor(self):
-  self.actor('甲');self.actor('乙')
-  with core.connect() as c:
-   p=discovery.actor_profile('甲')['insights'];p['fetched_at']='2026-09-28T00:00:00';c.execute('UPDATE actor_profiles SET insights_json=? WHERE name_key=?',(json.dumps(p),'甲'))
-   p=discovery.actor_profile('乙')['insights'];p['fetched_at']='2026-09-28T00:00:00';c.execute('UPDATE actor_profiles SET insights_json=? WHERE name_key=?',(json.dumps(p),'乙'))
-  candidate={'name':'乙','source':'wikidata','source_id':'Q123'}
-  with mock.patch.object(public_sources,'similar_candidates',return_value=([candidate],[])),mock.patch.object(public_sources,'fetch_actor') as fetch:
-   result=discovery.discover_similar('甲')
-  fetch.assert_not_called();self.assertEqual(result['candidates_checked'],1);self.assertEqual(result['recommendations'][0]['name'],'乙')
+  def test_recommendation_refresh_reuses_confirmed_cached_actor(self):
+   self.actor('甲');self.actor('乙')
+   with core.connect() as c:
+    p=discovery.actor_profile('甲')['insights'];p['fetched_at']='2026-09-28T00:00:00';c.execute('UPDATE actor_profiles SET insights_json=? WHERE name_key=?',(json.dumps(p),'甲'))
+    p=discovery.actor_profile('乙')['insights'];p['fetched_at']='2026-09-28T00:00:00';c.execute('UPDATE actor_profiles SET insights_json=? WHERE name_key=?',(json.dumps(p),'乙'))
+   candidate={'name':'乙','source':'wikidata','source_id':'Q123'}
+   with mock.patch.object(public_sources,'similar_candidates',return_value=([candidate],[])),mock.patch.object(public_sources,'fetch_actor') as fetch:
+    result=discovery.discover_similar('甲')
+   fetch.assert_not_called();self.assertEqual(result['candidates_checked'],1);self.assertEqual(result['recommendations'][0]['name'],'乙')
+
+ def _insert_movie(self,filename,title,year=None,cast=None):
+   with core.connect() as c:
+    mid=c.execute('INSERT INTO movies(path,filename,title,year,created_at,updated_at) VALUES(?,?,?,?,?,?)',(str(self.root/filename),filename,title,year,core.now_iso(),core.now_iso())).lastrowid
+    if cast is not None:c.execute('UPDATE movies SET cast_json=? WHERE id=?',(json.dumps([dict(name=n) for n in cast]),mid))
+   return mid
+
+ def test_public_works_hide_library_duplicates_but_keep_year_mismatch(self):
+   self._insert_movie('film.mp4','作品',2020)
+   self.actor('甲')
+   with core.connect() as c:
+    data=discovery.actor_profile('甲')['insights']
+    data['works']=[dict(title='作品',year='2020',genres=['剧情'],source='测试公开源',url='https://example.test/dup'),dict(title='同名单片',year='2005',genres=['剧情'],source='测试公开源',url='https://example.test/other')]
+    c.execute('UPDATE actor_profiles SET insights_json=? WHERE name_key=?',(json.dumps(data),'甲'))
+   p=discovery.actor_profile('甲')
+   self.assertEqual([w['title'] for w in p['works']],['同名单片'])
+   self.assertEqual(len(p['insights']['works']),2)
+   self.assertFalse(p['works'][0].get('in_library'))
+
+ def test_recommendations_rank_actors_without_local_works_first(self):
+   self.actor('甲');self.actor('乙');self.actor('丙')
+   self._insert_movie('b.mp4','乙的作品',2020,cast=['乙'])
+   rec=discovery.local_recommendations('甲')
+   self.assertEqual([p['name'] for p in rec[:2]],['丙','乙'])
+   self.assertIn('资料库尚无作品',rec[0]['reason'])
+   self.assertIn('资料库已有 1 部',rec[1]['reason'])
+
+ def test_tmdb_actor_falls_back_to_translated_biography_and_collects_acclaim(self):
+   data={'name':'测试演员','biography':'','translations':{'translations':[{'iso_639_1':'en','data':{'biography':'English public biography.'}}]},'combined_credits':{'cast':[{'id':1,'title':'高分电影','genre_ids':[18],'media_type':'movie','vote_count':200,'vote_average':8.5,'popularity':9},{'id':2,'title':'普通电影','genre_ids':[18],'media_type':'movie','vote_count':60,'vote_average':6.0,'popularity':3}]}}
+   reviews={'results':[{'content':'excellent performance by the lead','author_details':{'rating':9},'url':'https://example.test/r1'},{'content':'truly excellent performance','author_details':{'rating':8},'url':'https://example.test/r2'}]}
+   c=mock.Mock();c.tmdb.side_effect=lambda path,**kw: reviews if '/reviews' in path else data
+   p=public_sources.tmdb_actor(c,'7')
+   self.assertEqual(p['biography'],'English public biography.')
+   self.assertEqual(p['acclaim']['rated_count'],2);self.assertEqual(p['acclaim']['high_rated'],1)
+   self.assertEqual(p['acclaim']['top_work']['title'],'高分电影')
+   self.assertIn('表演受好评',p['acclaim']['performance_labels'])
+   self.assertTrue(p['acclaim']['performance_sources'])
+
+ def test_wikidata_actor_returns_verified_awards(self):
+   def claim(q):return {'mainsnak':{'datavalue':{'value':{'id':q}}}}
+   fixtures={'Q1':{'labels':{'zh':{'value':'测试演员'}},'claims':{'P31':[claim('Q5')],'P800':[claim('Qmovie')],'P166':[claim('Qaward')]},'sitelinks':{}},
+    'Qmovie':{'labels':{'zh':{'value':'代表作'}},'claims':{},'sitelinks':{}},'Qaward':{'labels':{'zh':{'value':'最佳女主角'}},'claims':{}}}
+   c=mock.Mock();c.entities.side_effect=lambda ids:{i:fixtures[i] for i in ids if i in fixtures};c.search_claims.return_value=[]
+   p=public_sources.wikidata_actor(c,'Q1')
+   self.assertEqual(p['awards'],['最佳女主角'])
+
+ def test_actor_page_shows_reception_awards_and_duplicate_hint(self):
+   self._insert_movie('film.mp4','重复作品',2020)
+   discovery.save_public_actor(dict(name='测试演员',source='wikidata',source_id='Q9',biography='公开介绍',
+    works=[dict(title='重复作品',year='2020',genres=['剧情'],source='测试公开源',url='https://example.test/dup'),dict(title='新作品',year='2021',genres=['剧情'],source='测试公开源',url='https://example.test/new')],
+    acclaim=dict(rated_count=12,high_rated=3,avg_rating=7.4,top_work=dict(title='新作品',score=8.2),performance_labels=['表演受好评'],performance_evidence='已抽查 20 条公开评论样本，1 部代表作明确出现好评；仅代表已获取样本',performance_sources=[dict(label='TMDb · 公开评论',url='https://example.test/reviews')]),
+    awards=['最佳女主角','最佳女配角'],sources=[dict(label='测试公开源',url='https://example.test/person')]))
+   window=desktop.MainWindow()
+   try:
+    page=window.actor_library;page.show_actor('测试演员')
+    texts=[l.text() for l in page.body.findChildren(QLabel)]
+    self.assertTrue(any('大众评价' in t for t in texts))
+    self.assertTrue(any('已隐藏与资料库重复的 1 部' in t for t in texts))
+    self.assertTrue(any('获奖记录：最佳女主角' in t for t in texts))
+    self.assertTrue(any('表演受好评' in t for t in texts))
+    self.assertFalse([t for t in texts if t=='重复作品'])
+    self.assertIn('新作品',texts)
+   finally:window.close();window.deleteLater();self.qt.processEvents()

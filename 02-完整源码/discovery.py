@@ -25,6 +25,36 @@ REVIEW_CUES = {'表演受好评':('演技出色','表演出色','精彩表演','
 def json_text(value):return json.dumps(value,ensure_ascii=False)
 
 
+def _work_year(value) -> int | None:
+    match=re.search(r'(?:19|20)\d{2}',str(value or ''))
+    return int(match.group(0)) if match else None
+
+
+def _library_work_index(movies: list[dict[str, Any]]) -> dict[str, tuple[int | None, int]]:
+    index={}
+    for m in movies:
+        year=_work_year(m.get('year'))
+        for field in ('title','original_title'):
+            identity=core.normalize_match_text(m.get(field,''))
+            if identity and identity not in index:index[identity]=(year,m['id'])
+    return index
+
+
+def _split_library_works(public_works: list[dict[str, Any]], index: dict[str, tuple[int | None, int]]) -> list[dict[str, Any]]:
+    """Mark public works already in the library so browsing only surfaces new discoveries."""
+    result=[]
+    for w in public_works:
+        identity=core.normalize_match_text(w.get('title',''))
+        hit=index.get(identity) if identity else None
+        if hit:
+            stored_year,local_id=hit
+            work_year=_work_year(w.get('year'))
+            if stored_year is None or work_year is None or abs(stored_year-work_year)<=1:
+                w={**w,'in_library':True,'local_id':local_id}
+        result.append(w)
+    return result
+
+
 def keywords(text: str, genres=(), refs=()) -> list[dict[str, Any]]:
     text=(text or '').casefold()
     labels=list(dict.fromkeys(str(g).strip() for g in genres if str(g).strip()))[:8]
@@ -69,7 +99,8 @@ def actor_profile(name: str, *, _rows=None, _movies=None) -> dict[str, Any] | No
     local=[m for m in movies if aliases.intersection(core.normalize_actor_name(p.get('name','')) for p in m.get('cast',[]))]
     data=core.json_value(row.get('insights_json'),{})
     known_aliases=core.unique_actor_names([*core.json_value(row.get('aliases_json'),[]),*data.get('aliases',[])])
-    public_works=data.get('works',[])
+    public_works=_split_library_works(data.get('works',[]),_library_work_index(movies))
+    discoverable_works=[w for w in public_works if not w.get('in_library')]
     # Collapse genre evidence across multiple works; no personality or appearance inferences.
     unique_works={}
     for work in [*public_works,*local]:
@@ -81,7 +112,13 @@ def actor_profile(name: str, *, _rows=None, _movies=None) -> dict[str, Any] | No
     actor_tags.extend(dict(label=g,kind='作品题材',evidence=f'{n} 部资料库作品的简介明确提及',sources=[{'label':'本地影片资料','url':''}]) for g,n in theme_counts.most_common(4))
     existing={x['label'] for x in actor_tags}
     actor_tags.extend(x for x in data.get('keywords',[]) if x['label'] not in existing)
-    return {**row,'favorite':bool(row.get('favorite')),'avatar':row.get('avatar_url',''),'aliases':known_aliases,'info':{**core.json_value(row.get('info_json'),{}),**data.get('info',{})},'local_works':local,'works':public_works,'keywords':actor_tags[:12],'sources':data.get('sources',[]),'warnings':data.get('warnings',[]),'fetched_at':data.get('fetched_at',''),'biography':data.get('biography') or row.get('biography') or '', 'insights':data}
+    acclaim=data.get('acclaim') or {}
+    reception_tags=[]
+    if acclaim.get('rated_count') and acclaim.get('high_rated'):
+        reception_tags.append(dict(label=f"高分代表作 {acclaim['high_rated']} 部",kind='大众评价',evidence=f"{acclaim['rated_count']} 部评分人数不少于 50 的公开作品中，{acclaim['high_rated']} 部评分达 8.0 以上",sources=list(data.get('sources',[]))))
+    for label in acclaim.get('performance_labels',[]):
+        reception_tags.append(dict(label=label,kind='大众评价',evidence=acclaim.get('performance_evidence') or '公开评论样本中明确赞同',sources=list(acclaim.get('performance_sources') or [])))
+    return {**row,'favorite':bool(row.get('favorite')),'avatar':row.get('avatar_url',''),'aliases':known_aliases,'info':{**core.json_value(row.get('info_json'),{}),**data.get('info',{})},'local_works':local,'works':discoverable_works,'keywords':(reception_tags+actor_tags)[:12],'sources':data.get('sources',[]),'warnings':data.get('warnings',[]),'fetched_at':data.get('fetched_at',''),'biography':data.get('biography') or row.get('biography') or '','acclaim':acclaim,'awards':[str(a) for a in data.get('awards') or []],'insights':data}
 
 
 def actor_list(query='', favorite_only=False, local_only=False) -> list[dict[str, Any]]:
@@ -132,8 +169,10 @@ def local_recommendations(name: str, candidates=None) -> list[dict[str, Any]]:
         shared=sorted(labels & other)
         if not shared:continue
         score=len(shared)/len(labels|other)
-        output.append({**candidate,'shared_keywords':shared,'similarity':score,'reason':'共同标签：'+'、'.join(shared[:4])})
-    return sorted(output,key=lambda p:(-p['similarity'],-len(p.get('works',[])),-len(p['local_works'])))[:16]
+        status='资料库尚无作品' if not candidate.get('local_works') else f"资料库已有 {len(candidate['local_works'])} 部"
+        output.append({**candidate,'shared_keywords':shared,'similarity':score,'reason':'共同标签：'+'、'.join(shared[:4])+' · '+status})
+    # Rank actors without library works first: browsing recommendations aims at discovery, not repeats.
+    return sorted(output,key=lambda p:(-p['similarity'],bool(p['local_works']),-len(p.get('works',[]))))[:16]
 
 
 def refresh_actor(name: str) -> dict[str, Any]:
@@ -180,7 +219,7 @@ def discover_similar(name: str) -> dict[str, Any]:
     if not p.get('fetched_at'):p=refresh_actor(name)
     candidates,warnings=similar_candidates(p)
     client=PublicClient();checked=0
-    for candidate in candidates[:8]:
+    for candidate in candidates[:10]:
         existing=actor_profile(candidate['name'])
         if existing and existing.get('fetched_at') and existing.get('source')==candidate.get('source') and str(existing.get('source_id'))==str(candidate.get('source_id')):
             checked+=1

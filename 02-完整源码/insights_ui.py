@@ -97,7 +97,8 @@ class ActorLibrary(QWidget):
             button=QPushButton('添加并查看');button.clicked.connect(callback)
         else:
             if recommendation:
-                desc=text_label(' · '.join(p.get('shared_keywords',[])[:3]),'actorReason',True);desc.setFixedHeight(40);box.addWidget(desc)
+                status='资料库尚无作品' if not p.get('local_works') else f"资料库已有 {len(p['local_works'])} 部"
+                desc=text_label(' · '.join([*p.get('shared_keywords',[])[:2],status]),'actorReason',True);desc.setFixedHeight(40);box.addWidget(desc)
             else:box.addWidget(text_label(f"{len(p.get('local_works',[]))} 部资料库作品",'mutedSmall'))
             button=QPushButton('已收藏' if p.get('favorite') else '收藏演员');button.setCheckable(True);button.setChecked(bool(p.get('favorite')))
             button.clicked.connect(lambda checked:self.toggle_favorite(p['name'],checked,button))
@@ -139,7 +140,18 @@ class ActorLibrary(QWidget):
             expand=QPushButton('展开完整介绍');expand.setObjectName('compactText');expand.clicked.connect(lambda:self.expand_bio(bio,expand));column.addWidget(expand)
         actions=QHBoxLayout();self.save=QPushButton('已收藏' if p['favorite'] else '收藏演员');self.save.setObjectName('actorSave');self.save.setCheckable(True);self.save.setChecked(p['favorite']);self.save.clicked.connect(lambda value:self.toggle_favorite(p['name'],value,self.save));actions.addWidget(self.save)
         search=QPushButton('网页搜索');search.clicked.connect(lambda:self.owner.search_actor(p.get('display_name') or p['name']));actions.addWidget(search);actions.addStretch();column.addLayout(actions);column.addStretch();hero_layout.addLayout(column,1);self.body_layout.addWidget(hero)
-        if p['info']:self.body_layout.addWidget(text_label('  ·  '.join(f'{k}：{v}' for k,v in list(p['info'].items())[:5]),'mutedSmall',True))
+        if p['info']:self.body_layout.addWidget(text_label('  ·  '.join(f'{k}：{v}' for k,v in list(p['info'].items())[:7]),'mutedSmall',True))
+        if p.get('awards'):self.body_layout.addWidget(text_label('获奖记录：'+'、'.join(p['awards'][:6])+(f" 等 {len(p['awards'])} 项" if len(p['awards'])>6 else ''),'mutedSmall',True))
+        acclaim=p.get('acclaim') or {}
+        reception=[]
+        if acclaim.get('rated_count'):reception.append(f"{acclaim['rated_count']} 部公开代表作有评分")
+        if acclaim.get('avg_rating'):reception.append(f"按评分人数加权均分 {acclaim['avg_rating']}")
+        if acclaim.get('high_rated'):reception.append(f"{acclaim['high_rated']} 部达 8 分以上")
+        if acclaim.get('top_work'):reception.append(f"最高分《{acclaim['top_work']['title']}》{float(acclaim['top_work']['score']):.1f}")
+        if acclaim.get('performance_labels'):reception.append('公开评论样本中其表演获得明确好评：'+'、'.join(acclaim['performance_labels']))
+        if reception:
+            head=QHBoxLayout();head.addWidget(text_label('大众评价','actorSection'));head.addWidget(text_label('仅汇总已核实的公开评分与评论样本','mutedSmall'));head.addStretch();self.body_layout.addLayout(head)
+            self.body_layout.addWidget(text_label('；'.join(reception)+'。','mutedSmall',True))
         taghead=QHBoxLayout();taghead.addWidget(text_label('关键词','actorSection'));taghead.addStretch();refresh=QPushButton('更新公开资料');refresh.clicked.connect(lambda:self.refresh_public(p['name'],refresh));taghead.addWidget(refresh);self.body_layout.addLayout(taghead)
         tags=KeywordStrip(limit=5);tags.set_keywords(p['keywords']);self.body_layout.addWidget(tags)
         if not p['keywords']:self.body_layout.addWidget(text_label('作品资料不足，暂不生成标签。','mutedSmall'))
@@ -153,11 +165,15 @@ class ActorLibrary(QWidget):
             for source in sources[:5]:
                 b=QPushButton(source['label']);b.setObjectName('compactText');b.setToolTip(source.get('url',''));b.clicked.connect(lambda checked=False,url=source.get('url',''):open_source(url));line.addWidget(b)
             line.addStretch();self.body_layout.addLayout(line)
-        workhead=QHBoxLayout();workhead.addWidget(text_label('主要作品','actorSection'));workhead.addStretch();self.artwork_update=QPushButton('正在补充图片…' if name in self.gallery_pending else '刷新图片与封面');self.artwork_update.setEnabled(name not in self.gallery_pending);self.artwork_update.clicked.connect(lambda:self.refresh_media(name));workhead.addWidget(self.artwork_update);self.body_layout.addLayout(workhead)
+        workhead=QHBoxLayout();workhead.addWidget(text_label('主要作品','actorSection'))
+        hidden=len(p.get('insights',{}).get('works',[]))-len(p['works'])
+        if hidden>0:workhead.addWidget(text_label(f"已隐藏与资料库重复的 {hidden} 部，只展示还没有的",'mutedSmall'))
+        workhead.addStretch();self.artwork_update=QPushButton('正在补充图片…' if name in self.gallery_pending else '刷新图片与封面');self.artwork_update.setEnabled(name not in self.gallery_pending);self.artwork_update.clicked.connect(lambda:self.refresh_media(name));workhead.addWidget(self.artwork_update);self.body_layout.addLayout(workhead)
         works=p['works'][:16]
         if works:self.body_layout.addWidget(self.work_strip(works))
         elif p['local_works']:
-            self.body_layout.addWidget(text_label('公开代表作尚未确认，先展示资料库中已有的参演作品。','mutedSmall',True));films=QPushButton('按此演员筛选影片');films.setObjectName('compactText');films.clicked.connect(lambda:self.owner.view_actor_films(p['name']));self.body_layout.addWidget(films);self.body_layout.addWidget(self.work_strip(p['local_works'][:16],local=True))
+            message='公开代表作均已收入资料库，新的公开作品会出现在这里。' if p['insights'].get('works') else '公开代表作尚未确认，先展示资料库中已有的参演作品。'
+            self.body_layout.addWidget(text_label(message,'mutedSmall',True));films=QPushButton('按此演员筛选影片');films.setObjectName('compactText');films.clicked.connect(lambda:self.owner.view_actor_films(p['name']));self.body_layout.addWidget(films);self.body_layout.addWidget(self.work_strip(p['local_works'][:16],local=True))
         else:self.body_layout.addWidget(text_label('暂未取得可确认的公开代表作；资料库中也尚无此演员的作品。','mutedSmall',True))
         photos=self.actor_photos(p)
         if photos:
