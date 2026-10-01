@@ -121,13 +121,20 @@ def actor_profile(name: str, *, _rows=None, _movies=None) -> dict[str, Any] | No
     return {**row,'favorite':bool(row.get('favorite')),'avatar':row.get('avatar_url',''),'aliases':known_aliases,'info':{**core.json_value(row.get('info_json'),{}),**data.get('info',{})},'local_works':local,'works':discoverable_works,'keywords':(reception_tags+actor_tags)[:12],'sources':data.get('sources',[]),'warnings':data.get('warnings',[]),'fetched_at':data.get('fetched_at',''),'biography':data.get('biography') or row.get('biography') or '','acclaim':acclaim,'awards':[str(a) for a in data.get('awards') or []],'insights':data}
 
 
-def actor_list(query='', favorite_only=False, local_only=False) -> list[dict[str, Any]]:
+def actor_list(query='', favorite_only=False, local_only=False, external_only=False) -> list[dict[str, Any]]:
     with core.connect() as c:
         rows=[dict(r) for r in c.execute('SELECT * FROM actor_profiles')]
         movies=[core.movie_dict(r) for r in c.execute("SELECT * FROM movies WHERE file_status<>'trashed'")]
     profiles=[p for row in rows if (p:=actor_profile(row['name'],_rows=rows,_movies=movies))]
     q=query.casefold().strip()
-    return sorted([p for p in profiles if (not favorite_only or p['favorite']) and (not local_only or p['local_works']) and (not q or q in ' '.join([p['name'],p.get('display_name') or '',*p['aliases'],*[x['label'] for x in p['keywords']]]).casefold())],key=lambda p:(not p['favorite'],-len(p['local_works']),p['name'].casefold()))
+    return sorted([p for p in profiles if (not favorite_only or p['favorite']) and (not local_only or p['local_works']) and (not external_only or not p['local_works']) and (not q or q in ' '.join([p['name'],p.get('display_name') or '',*p['aliases'],*[x['label'] for x in p['keywords']]]).casefold())],key=lambda p:(not p['favorite'],-len(p['local_works']),p['name'].casefold()))
+
+
+def profile_needs_refresh(profile: dict[str, Any]) -> bool:
+    """Lightweight catalog portraits stay thin until a full public fetch adds works and reception."""
+    data=profile.get('insights') or {}
+    if not profile.get('works') and not profile.get('local_works'):return True
+    return not data.get('acclaim') and not data.get('awards') and not profile.get('works')
 
 
 def set_actor_favorite(name: str, value: bool) -> None:

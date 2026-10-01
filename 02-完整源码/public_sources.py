@@ -92,6 +92,16 @@ def search_actors(query,client=None):
     return list({(p['source'],p['source_id']):p for p in results if p.get('name')}.values())
 
 
+def aggregate_acclaim(works):
+    """Audience reception from verified public ratings only, across any source."""
+    rated=[w for w in works if (w.get('vote_count') or 0)>=50 and float(w.get('vote_average') or 0)>0]
+    if not rated:return {}
+    votes=sum(int(w['vote_count']) for w in rated)
+    average=sum(float(w['vote_average'])*int(w['vote_count']) for w in rated)/max(1,votes)
+    top=max(rated,key=lambda w:(float(w['vote_average']),int(w['vote_count'])))
+    return dict(rated_count=len(rated),high_rated=sum(1 for w in rated if float(w['vote_average'])>=8),avg_rating=round(average,1),vote_total=votes,top_work=dict(title=top['title'],score=float(top['vote_average'])))
+
+
 def tmdb_actor(c,person_id):
     from discovery import GENRES,review_keywords
     p=c.tmdb('person/'+str(person_id),append_to_response='combined_credits,images,translations')
@@ -116,13 +126,8 @@ def tmdb_actor(c,person_id):
     departments={'Acting':'表演','Directing':'导演','Production':'制片','Writing':'编剧','Art':'美术','Sound':'音乐','Camera':'摄影','Crew':'剧组','Editing':'剪辑','Costume & Make-Up':'服装化妆'}
     info={k:v for k,v in {'生日':p.get('birthday'),'逝世':p.get('deathday'),'出生地':p.get('place_of_birth'),'职业领域':departments.get(p.get('known_for_department') or '',p.get('known_for_department') or ''),'IMDb':p.get('imdb_id')}.items() if v}
     # Aggregate audience reception from verified ratings and public review samples only.
-    rated=[w for w in works if (w.get('vote_count') or 0)>=50 and float(w.get('vote_average') or 0)>0]
-    acclaim={}
-    if rated:
-        votes=sum(int(w['vote_count']) for w in rated)
-        average=sum(float(w['vote_average'])*int(w['vote_count']) for w in rated)/max(1,votes)
-        top=max(rated,key=lambda w:(float(w['vote_average']),int(w['vote_count'])))
-        acclaim=dict(rated_count=len(rated),high_rated=sum(1 for w in rated if float(w['vote_average'])>=8),avg_rating=round(average,1),vote_total=votes,top_work=dict(title=top['title'],score=float(top['vote_average'])))
+    acclaim=aggregate_acclaim(works)
+    if acclaim:
         performance=[];hit=0;sample=0;sources=[]
         for w in sorted(works,key=lambda x:int(x.get('vote_count') or 0),reverse=True)[:2]:
             if int(w.get('vote_count') or 0)<100:continue
@@ -174,7 +179,7 @@ def wikidata_actor(c,entity_id):
         site=entity.get('sitelinks',{}).get(lang+'wiki')
         if not site:continue
         try:
-            data=c.get(f'https://{lang}.wikipedia.org/w/api.php?'+urllib.parse.urlencode({'action':'query','format':'json','formatversion':2,'prop':'extracts|pageimages','titles':site['title'],'exintro':1,'explaintext':1,'exchars':1800,'piprop':'thumbnail','pithumbsize':600,'redirects':1}))
+            data=c.get(f'https://{lang}.wikipedia.org/w/api.php?'+urllib.parse.urlencode({'action':'query','format':'json','formatversion':2,'prop':'extracts|pageimages','titles':site['title'],'explaintext':1,'exchars':1200,'piprop':'thumbnail','pithumbsize':600,'redirects':1}))
             pages=data.get('query',{}).get('pages',[])
             if pages and pages[0].get('extract'):
                 bio=pages[0]['extract'];sources.append({'label':f'Wikipedia · {lang}','url':f'https://{lang}.wikipedia.org/wiki/'+urllib.parse.quote(site['title'])})
@@ -273,6 +278,7 @@ def fetch_actor(candidate,client=None):
             result['wikidata_id']=part['source_id'];result['wikidata_genres']=part.get('wikidata_genres',[])
         if part.get('source')=='tmdb':result['tmdb_id']=part['source_id']
     result['awards']=result['awards'][:8]
+    if not result['acclaim']:result['acclaim']=aggregate_acclaim(result['works'])
     result['fetched_at']=core.now_iso();return result
 
 

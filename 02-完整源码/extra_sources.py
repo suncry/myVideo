@@ -66,7 +66,8 @@ def bangumi_actor(c,sid):
             title=subject.get('name_cn') or subject.get('name','')
         if not title:continue
         genres=[t.get('name','') for t in (subject.get('tags') or [])[:12] if isinstance(t,dict) and t.get('name') in {'剧情','喜剧','搞笑','动作','战斗','科幻','奇幻','悬疑','冒险','恋爱','爱情','音乐','历史','校园','日常','运动','治愈'}]
-        works.append(dict(id=wid,media_type='anime',title=title,year=str(subject.get('date',''))[:4],genres=genres,poster=(subject.get('images') or {}).get('large') or '',source='Bangumi',url='https://bgm.tv/subject/'+wid,vote_count=(subject.get('rating') or {}).get('total',0),popularity=sum(v for v in (subject.get('collection') or {}).values() if isinstance(v,int))))
+        rating=subject.get('rating') or {}
+        works.append(dict(id=wid,media_type='anime',title=title,year=str(subject.get('date',''))[:4],genres=genres,poster=(subject.get('images') or {}).get('large') or '',source='Bangumi',url='https://bgm.tv/subject/'+wid,vote_average=float(rating.get('score') or 0),vote_count=int(rating.get('total') or 0),popularity=sum(v for v in (subject.get('collection') or {}).values() if isinstance(v,int))))
     if not works:raise ValueError('此 Bangumi 人物暂未取得可确认的配音或出演作品。')
     works=sorted({w['id']:w for w in works}.values(),key=lambda w:(w.get('popularity',0),w.get('vote_count',0)),reverse=True)
     avatar=(p.get('images') or {}).get('large') or ''
@@ -85,7 +86,7 @@ def mal_actor(c,sid):
         if not detail.get('rating'):continue
         title=detail.get('title') or anime.get('title','')
         if not title:continue
-        works.append(dict(id=wid,media_type='anime',title=title,year=str(detail.get('year') or ''),genres=[g['name'] for g in detail.get('genres',[])],poster=detail.get('images',{}).get('jpg',{}).get('large_image_url') or anime.get('images',{}).get('jpg',{}).get('image_url',''),source='MyAnimeList / Jikan',url=detail.get('url') or anime.get('url',''),popularity=detail.get('members') or 0,vote_count=detail.get('scored_by') or 0))
+        works.append(dict(id=wid,media_type='anime',title=title,year=str(detail.get('year') or ''),genres=[g['name'] for g in detail.get('genres',[])],poster=detail.get('images',{}).get('jpg',{}).get('large_image_url') or anime.get('images',{}).get('jpg',{}).get('image_url',''),source='MyAnimeList / Jikan',url=detail.get('url') or anime.get('url',''),vote_average=float(detail.get('score') or 0),vote_count=int(detail.get('scored_by') or 0),popularity=detail.get('members') or 0))
         if len(works)>=10:break
     if not works:raise ValueError('此人物暂未取得可确认的公开配音作品。')
     works=sorted({w['id']:w for w in works}.values(),key=lambda w:(w.get('popularity',0),w.get('vote_count',0)),reverse=True)

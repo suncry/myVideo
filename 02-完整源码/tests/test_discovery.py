@@ -1,4 +1,4 @@
-import json,tempfile,unittest
+import json,os,tempfile,unittest
 from pathlib import Path
 from unittest import mock
 from PySide6.QtWidgets import QApplication,QLabel
@@ -146,6 +146,48 @@ class DiscoveryTests(unittest.TestCase):
    c=mock.Mock();c.entities.side_effect=lambda ids:{i:fixtures[i] for i in ids if i in fixtures};c.search_claims.return_value=[]
    p=public_sources.wikidata_actor(c,'Q1')
    self.assertEqual(p['awards'],['最佳女主角'])
+
+ def test_external_scope_lists_only_actors_without_local_works(self):
+   self.actor('甲');self.actor('乙');self._insert_movie('b.mp4','乙的作品',2020,cast=['乙'])
+   self.assertEqual([p['name'] for p in discovery.actor_list(external_only=True)],['甲'])
+   self.assertEqual([p['name'] for p in discovery.actor_list(local_only=True)],['乙'])
+
+ def test_profile_needs_refresh_flags_thin_portraits(self):
+   self.actor('完整演员')
+   self.assertFalse(discovery.profile_needs_refresh(discovery.actor_profile('完整演员')))
+   discovery.save_public_actor(dict(name='轻量演员',source='wikipedia-zh',source_id='W1',biography='简短介绍',works=[],sources=[dict(label='维基',url='https://example.test/w')]))
+   self.assertTrue(discovery.profile_needs_refresh(discovery.actor_profile('轻量演员')))
+
+ def test_reception_aggregates_ratings_across_sources(self):
+   works=[dict(title='高分番',vote_average=9.1,vote_count=3000),dict(title='一般番',vote_average=6.5,vote_count=200),dict(title='样本不足',vote_average=8.0,vote_count=10)]
+   acclaim=public_sources.aggregate_acclaim(works)
+   self.assertEqual(acclaim['rated_count'],2);self.assertEqual(acclaim['high_rated'],1)
+   self.assertEqual(acclaim['top_work']['title'],'高分番');self.assertAlmostEqual(acclaim['avg_rating'],8.9,1)
+   self.assertEqual(public_sources.aggregate_acclaim([dict(title='无评分')]),{})
+
+ def test_actor_page_auto_upgrades_thin_portraits_once_per_session(self):
+   discovery.save_public_actor(dict(name='轻量演员',source='wikipedia-zh',source_id='W1',biography='简短介绍',works=[],sources=[dict(label='维基',url='https://example.test/w')]))
+   window=desktop.MainWindow()
+   try:
+    os.environ.pop('YINGKU_DISABLE_STARTUP_TASKS',None)
+    window.run_task=mock.Mock();page=window.actor_library;page.show_actor('轻量演员')
+    self.assertIn('轻量演员',page.upgrade_attempted);window.run_task.assert_called_once()
+    window.run_task.reset_mock();page.show_actor('轻量演员');window.run_task.assert_called_once()
+    self.assertIn('轻量演员',page.discover_attempted)
+   finally:
+    os.environ['YINGKU_DISABLE_STARTUP_TASKS']='1';window.close();window.deleteLater();self.qt.processEvents()
+
+ def test_actor_page_auto_discovers_when_recommendations_empty(self):
+   discovery.save_public_actor(dict(name='甲',source='wikidata',source_id='Q1',biography='x',
+    works=[dict(title='代表作',year='2020',genres=['剧情'],source='测试公开源',url='https://example.test/a')],
+    acclaim=dict(rated_count=9,high_rated=2,avg_rating=7.0,top_work=dict(title='代表作',score=7.0)),sources=[dict(label='测试公开源',url='https://example.test/a')]))
+   window=desktop.MainWindow()
+   try:
+    os.environ.pop('YINGKU_DISABLE_STARTUP_TASKS',None)
+    window.run_task=mock.Mock();page=window.actor_library;page.show_actor('甲')
+    self.assertIn('甲',page.discover_attempted)
+   finally:
+    os.environ['YINGKU_DISABLE_STARTUP_TASKS']='1';window.close();window.deleteLater();self.qt.processEvents()
 
  def test_actor_page_shows_reception_awards_and_duplicate_hint(self):
    self._insert_movie('film.mp4','重复作品',2020)

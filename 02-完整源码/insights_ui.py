@@ -55,14 +55,14 @@ class KeywordStrip(QWidget):
 
 class ActorLibrary(QWidget):
     def __init__(self,owner,poster_class):
-        super().__init__(owner);self.owner=owner;self.poster_class=poster_class;self.actor=None;self.tiles=[];self.columns=0;self.busy=False;self.gallery_attempted=set();self.gallery_pending=set();self.viewer=None
+        super().__init__(owner);self.owner=owner;self.poster_class=poster_class;self.actor=None;self.tiles=[];self.columns=0;self.busy=False;self.gallery_attempted=set();self.gallery_pending=set();self.upgrade_attempted=set();self.discover_attempted=set();self.viewer=None
         self.layout=QVBoxLayout(self);self.layout.setContentsMargins(0,0,0,0)
         self.stack=QStackedWidget();self.layout.addWidget(self.stack)
         self.browse=QWidget();self.browse_layout=QVBoxLayout(self.browse);self.browse_layout.setContentsMargins(28,27,28,12);self.browse_layout.setSpacing(15)
         header=QHBoxLayout();header.addWidget(text_label('演员','heading'));header.addStretch();self.browse_layout.addLayout(header)
         self.browse_layout.addWidget(text_label('收藏喜欢的演员，沿着作品与标签发现新的名字。','muted'))
         filters=QHBoxLayout();self.query=QLineEdit();self.query.setPlaceholderText('搜索姓名、别名或关键词');self.query.setClearButtonEnabled(True)
-        self.scope=ScrollSafeComboBox();self.scope.addItems(['全部演员','我的收藏','资料库内'])
+        self.scope=ScrollSafeComboBox();self.scope.addItems(['全部演员','我的收藏','资料库内','资料库外'])
         self.public_search=QPushButton('搜索公开演员');self.public_search.setToolTip('查询 TMDb、百科、TVmaze、Bangumi 和 MyAnimeList；重名条目由你选择');self.public_search.clicked.connect(self.search_public)
         filters.addWidget(self.query,1);filters.addWidget(self.scope);filters.addWidget(self.public_search);self.browse_layout.addLayout(filters)
         self.browse_status=text_label('','mutedSmall',True);self.browse_layout.addWidget(self.browse_status)
@@ -74,9 +74,10 @@ class ActorLibrary(QWidget):
         self.debounce=QTimer(self);self.debounce.setSingleShot(True);self.debounce.timeout.connect(self.reload);self.query.textChanged.connect(lambda:self.debounce.start(160));self.scope.currentIndexChanged.connect(self.reload)
     def reload(self):
         self.busy=False;self.public_search.setEnabled(True)
-        profiles=discovery.actor_list(self.query.text(),self.scope.currentIndex()==1,self.scope.currentIndex()==2)
+        profiles=discovery.actor_list(self.query.text(),self.scope.currentIndex()==1,self.scope.currentIndex()==2,self.scope.currentIndex()==3)
         self.show_tiles(profiles)
-        self.browse_status.setText(f'{len(profiles)} 位演员'+(' · 还没有收藏，在演员详情中点击“收藏演员”。' if not profiles and self.scope.currentIndex()==1 else ''))
+        hint={'资料库外':' · 只看本地没有作品的演员，适合发现新内容','资料库内':' · 只看已有作品的演员'}.get(self.scope.currentText(),'')
+        self.browse_status.setText(f'{len(profiles)} 位演员{hint}'+(' · 还没有收藏，在演员详情中点击“收藏演员”。' if not profiles and self.scope.currentIndex()==1 else ''))
     def show_tiles(self,profiles,external=False):
         while self.grid.count():
             w=self.grid.takeAt(0).widget()
@@ -99,7 +100,7 @@ class ActorLibrary(QWidget):
             if recommendation:
                 status='资料库尚无作品' if not p.get('local_works') else f"资料库已有 {len(p['local_works'])} 部"
                 desc=text_label(' · '.join([*p.get('shared_keywords',[])[:2],status]),'actorReason',True);desc.setFixedHeight(40);box.addWidget(desc)
-            else:box.addWidget(text_label(f"{len(p.get('local_works',[]))} 部资料库作品",'mutedSmall'))
+            else:box.addWidget(text_label(f"{len(p.get('local_works',[]))} 部资料库作品" if p.get('local_works') else '资料库尚无作品 · 发现新面孔','mutedSmall'))
             button=QPushButton('已收藏' if p.get('favorite') else '收藏演员');button.setCheckable(True);button.setChecked(bool(p.get('favorite')))
             button.clicked.connect(lambda checked:self.toggle_favorite(p['name'],checked,button))
         button.setObjectName('actorSave');box.addWidget(button);box.addStretch();return tile
@@ -193,6 +194,25 @@ class ActorLibrary(QWidget):
         known=p.get('source') in ('tmdb','wikidata') or p['insights'].get('tmdb_id') or p['insights'].get('wikidata_id')
         if known and os.environ.get('YINGKU_DISABLE_STARTUP_TASKS')!='1' and not p['insights'].get('gallery_version') and name not in self.gallery_attempted:
             self.gallery_attempted.add(name);QTimer.singleShot(200,lambda:self.refresh_media(name) if self.actor and self.actor['name']==name else None)
+        # Silently upgrade thin legacy portraits once per session so new reception, awards and works appear on open.
+        if os.environ.get('YINGKU_DISABLE_STARTUP_TASKS')!='1' and discovery.profile_needs_refresh(p) and name not in self.upgrade_attempted:
+            self.upgrade_attempted.add(name);self.detail_status.setText('正在自动升级该演员的公开资料：补充作品、大众评价与获奖…')
+            def upgraded(result):
+                if self.actor and self.actor['name']==name:self.owner.images.cache.clear();self.show_actor(name)
+            def upgrade_failed(error):
+                if self.actor and self.actor['name']==name and name not in self.gallery_pending:self.detail_status.setText(str(error))
+            self.owner.run_task(lambda:discovery.refresh_actor(name),upgraded,upgrade_failed)
+        elif os.environ.get('YINGKU_DISABLE_STARTUP_TASKS')!='1' and not discovery.local_recommendations(name) and name not in self.discover_attempted:
+            self.discover_attempted.add(name);self.auto_discover(name)
+    def auto_discover(self,name):
+        if not (self.actor and self.actor['name']==name):return
+        def complete(result):
+            if not (self.actor and self.actor['name']==name):return
+            self.rec_scroll.setFixedHeight(318);self.show_recommendations(result['recommendations'])
+            self.detail_status.setText(f"已自动联网核对 {result['candidates_checked']} 位同类演员；推荐优先展示资料库还没有的。"+(' '+'；'.join(result['warnings']) if result['warnings'] else ''))
+        def failed(error):
+            if self.actor and self.actor['name']==name and name not in self.gallery_pending:self.detail_status.setText(str(error))
+        self.owner.run_task(lambda:discovery.discover_similar(name),complete,failed)
     def show_recommendations(self,profiles):
         while self.rec_layout.count():
             item=self.rec_layout.takeAt(0)
