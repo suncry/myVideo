@@ -1,0 +1,8 @@
+{
+  "version": "2.8.2",
+  "machine": "0x8664",
+  "subsystem": 2,
+  "sha256": "ef432362e6966bbd46b7c9da8fcf49342fb4be7fa988c04f83edb6fc12554bec",
+  "size": 5634312,
+  "native_format": "PE/AMD64 Windows GUI"
+}

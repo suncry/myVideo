@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101114">
+  <title>影库 · 我的本地影片</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">映</span><div><strong>影库</strong><small>MY FILM ARCHIVE</small></div></div>
+      <nav id="nav">
+        <button class="nav-item active" data-view="all"><span>▦</span>全部影片<em id="nav-total">0</em></button>
+        <button class="nav-item" data-view="favorite"><span>♥</span>我的喜欢<em id="nav-favorites">0</em></button>
+        <button class="nav-item" data-view="unwatched"><span>◷</span>还没看过</button>
+        <button class="nav-item" data-view="unmatched"><span>?</span>待匹配资料<em id="nav-unmatched">0</em></button>
+        <button class="nav-item" data-view="duplicates"><span>⧉</span>重复影片<em id="nav-duplicates">0</em></button>
+        <button class="nav-item danger" data-view="delete"><span>⌫</span>待处理<em id="nav-delete">0</em></button>
+      </nav>
+      <div class="side-bottom">
+        <button class="ghost wide" id="scan-open">＋ 添加 / 扫描硬盘</button>
+        <button class="text-button" id="settings-open">⚙ 数据源设置</button>
+        <div class="privacy"><span></span>资料库只保存在本机</div>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div class="mobile-brand">影库</div>
+        <label class="search"><span>⌕</span><input id="search" placeholder="搜索片名、演员、标签或文件名…"><kbd>Ctrl K</kbd></label>
+        <div class="top-actions"><button class="icon-button" id="refresh" title="刷新">↻</button><button class="avatar">我</button></div>
+      </header>
+
+      <div class="content">
+        <section class="hero">
+          <div>
+            <p class="eyebrow">PERSONAL FILM ARCHIVE</p>
+            <h1 id="page-title">我的全部影片</h1>
+            <p id="page-subtitle">先看清自己的收藏，再决定留下什么。</p>
+          </div>
+          <button class="primary" id="hero-scan">扫描影片 <span>＋</span></button>
+        </section>
+
+        <section class="stats" id="stats">
+          <article><div class="stat-icon coral">▦</div><div><strong id="stat-total">0</strong><span>部影片</span></div><small id="stat-size">0 GB</small></article>
+          <article><div class="stat-icon rose">♥</div><div><strong id="stat-favorites">0</strong><span>我的喜欢</span></div><small>持续了解偏好</small></article>
+          <article><div class="stat-icon amber">◐</div><div><strong id="stat-unmatched">0</strong><span>待补全资料</span></div><small>可联网匹配</small></article>
+          <article><div class="stat-icon slate">⌫</div><div><strong id="stat-delete">0</strong><span>待处理</span></div><small id="duplicate-note">0 个重复</small></article>
+        </section>
+
+        <section class="toolbar">
+          <div class="result-line"><strong id="result-count">0</strong> 部影片</div>
+          <div class="toolbar-actions">
+            <select id="sort" aria-label="排序"><option value="updated">最近入库</option><option value="title">片名 A-Z</option><option value="year">上映年份</option><option value="rating">我的评分</option><option value="size">文件大小</option></select>
+            <button class="view-toggle active" data-layout="grid">▦</button><button class="view-toggle" data-layout="list">☷</button>
+          </div>
+        </section>
+
+        <section id="movie-grid" class="movie-grid"></section>
+        <section id="empty" class="empty hidden">
+          <div class="empty-art"><span>▶</span></div><h2>这里还没有影片</h2><p>选择一个装有影片的硬盘或文件夹，影库会自动建立索引。</p><button class="primary" id="empty-scan">开始扫描</button>
+        </section>
+        <div class="pagination" id="pagination"></div>
+      </div>
+    </main>
+  </div>
+
+  <div class="overlay hidden" id="overlay"></div>
+
+  <aside class="drawer" id="detail-drawer" aria-hidden="true">
+    <button class="drawer-close" data-close>×</button>
+    <div id="detail-content"></div>
+  </aside>
+
+  <div class="modal" id="scan-modal" aria-hidden="true">
+    <button class="modal-close" data-close>×</button>
+    <p class="eyebrow">ADD MEDIA</p><h2>扫描硬盘或文件夹</h2>
+    <p class="modal-lead">可多选磁盘。第一次建议先选存放影片的盘，系统目录会自动跳过。</p>
+    <div id="drive-list" class="drive-list"><div class="loader">正在读取磁盘…</div></div>
+    <label class="field"><span>其他文件夹（每行一个路径）</span><textarea id="custom-roots" rows="3" placeholder="例如：D:\电影\经典片"></textarea></label>
+    <div id="scan-progress" class="scan-progress hidden"><div><span id="scan-label">准备扫描…</span><strong id="scan-count">0</strong></div><div class="progress"><i></i></div><small id="scan-current"></small></div>
+    <div class="modal-actions"><button class="ghost" data-close>取消</button><button class="primary" id="scan-start">开始扫描</button></div>
+  </div>
+
+  <div class="modal compact" id="settings-modal" aria-hidden="true">
+    <button class="modal-close" data-close>×</button>
+    <p class="eyebrow">METADATA SOURCES</p><h2>联网资料源</h2>
+    <p class="modal-lead">Bangumi 可直接用于动画及小众条目；TMDb 覆盖电影、剧集和演员头像，需要你自己的免费令牌。</p>
+    <label class="field"><span>TMDb API Read Access Token</span><input id="tmdb-token" type="password" placeholder="粘贴以 eyJ 开头的令牌"></label>
+    <p class="hint" id="token-hint">令牌只保存在本机数据库中。</p>
+    <div class="modal-actions"><button class="ghost" data-close>取消</button><button class="primary" id="settings-save">保存设置</button></div>
+  </div>
+
+  <div class="modal wide" id="match-modal" aria-hidden="true">
+    <button class="modal-close" data-close>×</button>
+    <p class="eyebrow">MATCH METADATA</p><h2>为影片匹配资料</h2>
+    <div class="match-search"><input id="match-query" placeholder="输入更准确的片名"><select id="match-provider"><option value="all">全部来源</option><option value="tmdb">TMDb</option><option value="bangumi">Bangumi</option></select><button class="primary" id="match-search">搜索</button></div>
+    <div id="match-warnings" class="warnings"></div><div id="match-results" class="match-results"></div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

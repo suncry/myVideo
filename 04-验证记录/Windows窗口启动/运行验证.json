@@ -1,0 +1,12 @@
+{
+  "architecture": "AMD64",
+  "qt": "6.8.3",
+  "database_integrity": "ok",
+  "movie_count": 0,
+  "data_dir": "C:\\yingku-native-window-data-Public",
+  "font_available": false,
+  "ffmpeg": "ffmpeg version 7.1-essentials_build-www.gyan.dev Copyright (c) 2000-2024 the FFmpeg developers",
+  "extracted_frames": 0,
+  "cert_bundle": true,
+  "catalog_import": true
+}

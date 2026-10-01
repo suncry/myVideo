@@ -1,0 +1,96 @@
+528 INFO: PyInstaller: 6.22.3, contrib hooks: 2026.7
+530 INFO: Python: 3.12.10
+533 INFO: Platform: Windows-10-10.0.19045-SP0
+533 INFO: Python environment: C:\Python312
+539 INFO: Removing temporary files and cleaning cache in C:\users\nil\AppData\Local\pyinstaller
+3415 INFO: Module search paths (PYTHONPATH):
+['S:\\',
+ 'C:\\Python312\\python312.zip',
+ 'C:\\Python312\\DLLs',
+ 'C:\\Python312\\Lib',
+ 'C:\\Python312',
+ 'C:\\Python312\\Lib\\site-packages',
+ 'S:\\']
+4797 INFO: Appending 'datas' from .spec
+4804 INFO: checking Analysis
+4804 INFO: Building Analysis because Analysis-00.toc is non existent
+4804 INFO: Looking for Python shared library...
+4804 INFO: Using Python shared library: C:\Python312\python312.dll
+4804 INFO: Running Analysis Analysis-00.toc
+4804 INFO: Target bytecode optimization level: 0
+4804 INFO: Initializing module dependency graph...
+4811 INFO: Initializing module graph hook caches...
+4842 INFO: Analyzing modules for base_library.zip ...
+8715 INFO: Processing standard module hook 'hook-heapq.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+8995 INFO: Processing standard module hook 'hook-encodings.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11312 INFO: Processing standard module hook 'hook-math.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+11563 INFO: Processing standard module hook 'hook-pickle.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+13057 INFO: Caching module dependency graph...
+13096 INFO: Analyzing S:\windows_entry.py
+13313 INFO: Processing standard module hook 'hook-PySide6.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+14220 INFO: Processing standard module hook 'hook-shiboken6.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+14334 INFO: Processing standard module hook 'hook-PySide6.QtNetwork.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+17220 INFO: Processing standard module hook 'hook-PySide6.QtCore.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+19587 INFO: Processing standard module hook 'hook-PySide6.QtGui.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+28994 INFO: Processing standard module hook 'hook-PySide6.QtWidgets.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+31296 INFO: Processing standard module hook 'hook-_ctypes.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+31340 INFO: Processing standard module hook 'hook-difflib.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+31428 INFO: Processing standard module hook 'hook-sqlite3.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+33064 INFO: Processing standard module hook 'hook-webbrowser.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+33128 INFO: Processing standard module hook 'hook-xml.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+33162 INFO: Processing standard module hook 'hook-xml.etree.cElementTree.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+33214 INFO: Processing standard module hook 'hook-certifi.py' from 'C:\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+33293 INFO: Processing standard module hook 'hook-imageio_ffmpeg.py' from 'C:\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+33355 INFO: Processing standard module hook 'hook-platform.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+33492 INFO: Processing standard module hook 'hook-xml.dom.domreg.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+33662 INFO: Processing standard module hook 'hook-niquests.py' from 'C:\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+1266 WARNING: Failed to collect submodules for 'niquests.extensions.pyodide' because importing 'niquests.extensions.pyodide' raised: ModuleNotFoundError: No module named 'pyodide'
+36042 INFO: Processing standard module hook 'hook-multiprocessing.util.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+36725 INFO: Processing standard module hook 'hook-urllib3.py' from 'C:\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+39048 INFO: Processing pre-safe-import-module hook 'hook-typing_extensions.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_safe_import_module'
+39054 INFO: SetuptoolsInfo: initializing cached setuptools info...
+43729 INFO: Processing standard module hook 'hook-urllib3_future.py' from 'C:\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+47453 INFO: Processing standard module hook 'hook-charset_normalizer.py' from 'C:\\Python312\\Lib\\site-packages\\_pyinstaller_hooks_contrib\\stdhooks'
+48744 INFO: Analyzing hidden import 'imageio_ffmpeg.binaries'
+48747 INFO: Processing module hooks (post-graph stage)...
+49065 INFO: Performing binary vs. data reclassification (135 entries)
+49212 INFO: Looking for ctypes DLLs
+49271 INFO: Analyzing run-time hooks ...
+49273 INFO: Including run-time hook 'pyi_rth_inspect.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+49277 INFO: Including run-time hook 'pyi_rth_pkgutil.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+49283 INFO: Including run-time hook 'pyi_rth_multiprocessing.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+49286 INFO: Including run-time hook 'pyi_rth_pyside6.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\rthooks'
+49289 INFO: Processing pre-find-module-path hook 'hook-_pyi_rth_utils.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks\\pre_find_module_path'
+49295 INFO: Processing standard module hook 'hook-_pyi_rth_utils.py' from 'C:\\Python312\\Lib\\site-packages\\PyInstaller\\hooks'
+49313 INFO: Creating base_library.zip...
+49333 INFO: Looking for dynamic libraries
+52238 INFO: Extra DLL search directories (AddDllDirectory): ['C:\\Python312\\Lib\\site-packages\\shiboken6']
+52239 INFO: Extra DLL search directories (PATH): ['C:\\Python312\\Lib\\site-packages\\PySide6']
+53866 INFO: Warnings written to S:\build\YingKu-Windows\warn-YingKu-Windows.txt
+53926 INFO: Graph cross-reference written to S:\build\YingKu-Windows\xref-YingKu-Windows.html
+53956 INFO: checking PYZ
+53956 INFO: Building PYZ because PYZ-00.toc is non existent
+53956 INFO: Building PYZ (ZlibArchive) S:\build\YingKu-Windows\PYZ-00.pyz
+54412 INFO: Building PYZ (ZlibArchive) S:\build\YingKu-Windows\PYZ-00.pyz completed successfully.
+54430 INFO: checking PKG
+54430 INFO: Building PKG because PKG-00.toc is non existent
+54430 INFO: Building PKG (CArchive) 影库.pkg
+54466 INFO: Building PKG (CArchive) 影库.pkg completed successfully.
+54468 INFO: Bootloader C:\Python312\Lib\site-packages\PyInstaller\bootloader\Windows-64bit-intel\runw.exe
+54468 INFO: checking EXE
+54468 INFO: Building EXE because EXE-00.toc is non existent
+54468 INFO: Building EXE from EXE-00.toc
+54468 INFO: Copying bootloader EXE to S:\build\YingKu-Windows\影库.exe
+54474 INFO: Copying icon to EXE
+54478 INFO: Copying version information to EXE
+54484 INFO: Copying 0 resources to EXE
+54484 INFO: Embedding manifest in EXE
+54487 INFO: Appending PKG archive to EXE
+54491 INFO: Fixing EXE headers
+54559 INFO: Building EXE from EXE-00.toc completed successfully.
+54577 INFO: checking COLLECT
+54577 INFO: Building COLLECT because COLLECT-00.toc is non existent
+54578 INFO: Removing dir S:\dist\影库
+54637 INFO: Building COLLECT COLLECT-00.toc
+55136 INFO: Building COLLECT COLLECT-00.toc completed successfully.
+55139 INFO: Build complete! The results are available in: S:\dist

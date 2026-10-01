@@ -1,0 +1,21 @@
+{
+  "scenario": "scan",
+  "success": true,
+  "mode": "public",
+  "auth_host_visible": [
+    true
+  ],
+  "callbacks_main_thread": [
+    true,
+    true,
+    true
+  ],
+  "results": [
+    "<lambda>",
+    "restore_video_defaults",
+    "enrich_actor_avatars"
+  ],
+  "errors": [],
+  "movies": 1,
+  "integrity": "ok"
+}

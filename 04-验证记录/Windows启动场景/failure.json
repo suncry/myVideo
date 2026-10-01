@@ -1,0 +1,20 @@
+{
+  "scenario": "failure",
+  "success": true,
+  "mode": "public",
+  "auth_host_visible": [
+    true
+  ],
+  "callbacks_main_thread": [
+    true,
+    true
+  ],
+  "results": [
+    "restore_video_defaults"
+  ],
+  "errors": [
+    "simulated worker failure"
+  ],
+  "movies": 0,
+  "integrity": "ok"
+}

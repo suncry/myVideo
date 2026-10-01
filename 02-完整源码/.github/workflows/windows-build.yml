@@ -1,0 +1,40 @@
+name: Windows tests and build
+on:
+  workflow_dispatch:
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Install pinned dependencies
+        run: python -m pip install -r requirements-windows-lock.txt
+      - name: Validate PowerShell development scripts
+        shell: pwsh
+        run: |
+          Get-ChildItem scripts -Filter *.ps1 | ForEach-Object {
+            $Tokens = $null
+            $Errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$Tokens, [ref]$Errors) | Out-Null
+            if ($Errors.Count) { throw ($Errors | Out-String) }
+          }
+      - name: Isolated regression tests
+        run: python scripts/run_tests.py
+      - name: Build Windows icon
+        run: python scripts/build_windows_icon.py
+      - name: Build executable
+        run: python -m PyInstaller --noconfirm --clean YingKu-Windows.spec
+      - name: Test packaged startup
+        run: python scripts/package_smoke.py --exe "dist/影库/影库.exe" --output "build/package-smoke"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: YingKu-Windows-x64
+          path: |
+            dist/影库/
+            build/package-smoke/
+          if-no-files-found: error

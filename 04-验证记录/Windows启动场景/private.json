@@ -1,0 +1,19 @@
+{
+  "scenario": "private",
+  "success": true,
+  "mode": "private",
+  "auth_host_visible": [
+    true
+  ],
+  "callbacks_main_thread": [
+    true,
+    true
+  ],
+  "results": [
+    "restore_video_defaults",
+    "enrich_actor_avatars"
+  ],
+  "errors": [],
+  "movies": 0,
+  "integrity": "ok"
+}
