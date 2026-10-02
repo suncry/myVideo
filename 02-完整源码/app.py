@@ -564,8 +564,10 @@ def scan_roots(roots: list[str]) -> None:
                             stat = path.stat()
                             existing = conn.execute(
                                 "SELECT id,file_size,modified_at,duration_seconds,hidden_by_app,"
-                                "original_file_attributes FROM movies WHERE path=?", (resolved_path,)
+                                "original_file_attributes,file_status FROM movies WHERE path=?", (resolved_path,)
                             ).fetchone()
+                            if existing and existing["file_status"] == 'trashed':
+                                continue  # Records removed from the library stay in the recycle bin during scans.
                             if existing and existing["file_size"] == stat.st_size and existing["modified_at"] == stat.st_mtime:
                                 duration = float(existing["duration_seconds"] or 0) or probe_video_duration(path)
                                 if duration and not existing["duration_seconds"]:
@@ -933,6 +935,68 @@ def recycle_movie_file(movie_id: int, recycler: Any = None) -> str:
         )
         sync_hidden_folders(conn)
     return str(path)
+
+
+def trash_movie_record(movie_id: int) -> None:
+    """Remove from library listing; the media file stays untouched on disk."""
+    with connect() as conn:
+        if not conn.execute("SELECT 1 FROM movies WHERE id=?", (movie_id,)).fetchone():
+            raise ValueError("影片记录不存在")
+        conn.execute("UPDATE movies SET file_status='trashed',exists_now=0,updated_at=? WHERE id=?", (now_iso(), movie_id))
+
+
+def restore_movie_record(movie_id: int) -> None:
+    """Return a trashed record to the library; the file must still exist."""
+    with connect() as conn:
+        row = conn.execute("SELECT path FROM movies WHERE id=?", (movie_id,)).fetchone()
+    if not row:
+        raise ValueError("影片记录不存在")
+    if not Path(row["path"]).is_file():
+        raise FileNotFoundError(f"影片文件已不存在：{row['path']}")
+    with connect() as conn:
+        conn.execute("UPDATE movies SET file_status='available',exists_now=1,updated_at=? WHERE id=?", (now_iso(), movie_id))
+
+
+def purge_movie_record(movie_id: int) -> str:
+    """Permanently delete the file from disk and remove the record."""
+    with connect() as conn:
+        row = conn.execute("SELECT path FROM movies WHERE id=?", (movie_id,)).fetchone()
+    if not row:
+        raise ValueError("影片记录不存在")
+    path = Path(row["path"])
+    if path.is_file():
+        path.unlink()
+    with connect() as conn:
+        conn.execute("DELETE FROM movies WHERE id=?", (movie_id,))
+    return str(path)
+
+
+def trashed_movies(query: str = "", actor: str = "") -> list[dict[str, Any]]:
+    """All records removed from the library; files remain on disk until purged."""
+    where = ["file_status='trashed'"]
+    args: list[Any] = []
+    if query:
+        where.append("(title LIKE ? OR original_title LIKE ? OR filename LIKE ?)")
+        args.extend([f"%{query}%"] * 3)
+    if actor:
+        where.append("cast_json LIKE ?")
+        args.append(f"%{actor}%")
+    with connect() as conn:
+        rows = conn.execute(f"SELECT * FROM movies WHERE {' AND '.join(where)} ORDER BY updated_at DESC", args).fetchall()
+    return [movie_dict(row) for row in rows]
+
+
+def trashed_actor_facets() -> list[dict[str, Any]]:
+    """Actor counts across trashed records for the recycle bin filter."""
+    with connect() as conn:
+        rows = conn.execute("SELECT cast_json FROM movies WHERE file_status='trashed' AND cast_json<>''").fetchall()
+    counter: dict[str, int] = {}
+    for row in rows:
+        for person in json_value(row[0], []):
+            name = person.get("name", "")
+            if name:
+                counter[name] = counter.get(name, 0) + 1
+    return [{"name": n, "count": c} for n, c in sorted(counter.items(), key=lambda x: -x[1])[:30]]
 
 
 def get_settings() -> dict[str, str]:

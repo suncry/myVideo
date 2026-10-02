@@ -32,6 +32,7 @@ import iina_cleanup
 import discovery
 from process_utils import process_alive
 from insights_ui import ActorLibrary, KeywordStrip
+from trash_ui import TrashBrowser
 from scrolling import NativeScrollArea, ScrollSafeComboBox, set_background
 from background_tasks import TaskRunner
 
@@ -1812,6 +1813,8 @@ class MainWindow(QMainWindow):
         self.content_stack.addWidget(self.splitter)
         self.actor_library = ActorLibrary(self, PosterLabel)
         self.content_stack.addWidget(self.actor_library)
+        self.trash_browser = TrashBrowser(self, PosterLabel)
+        self.content_stack.addWidget(self.trash_browser)
         root_layout.addWidget(self.content_stack, 1)
         self.bottom_stats = QLabel("")
         self.bottom_stats.setObjectName("bottomStats")
@@ -1930,6 +1933,7 @@ class MainWindow(QMainWindow):
         navs = [
             ("all", "▦   全部影片"), ("actors", "演员"), ("favorite", "♥   我的喜欢"), ("unwatched", "◷   还没看过"),
             ("unmatched", "?   待匹配资料"), ("duplicates", "⧉   重复影片"), ("delete", "⌫   待处理"),
+            ("recycle", "♻   回收站"),
         ]
         for index, (key, text) in enumerate(navs):
             button = QPushButton(text)
@@ -2216,10 +2220,15 @@ class MainWindow(QMainWindow):
         delete_local.setObjectName("dangerText")
         delete_local.setToolTip("把本地影片文件移到 回收站")
         delete_local.clicked.connect(self.delete_current_file)
+        soft_delete = QPushButton("移出资料库")
+        soft_delete.setProperty("detailAction", True)
+        soft_delete.setToolTip("从资料库隐藏这部影片；文件保留在硬盘上，可在回收站页面恢复或彻底删除")
+        soft_delete.clicked.connect(self.trash_current)
         action_row.addWidget(self.play_button)
         action_row.addWidget(folder)
         action_row.addWidget(self.match_button)
         action_row.addWidget(edit)
+        action_row.addWidget(soft_delete)
         action_row.addStretch()
         action_row.addWidget(delete_local)
         self.detail_layout.addLayout(action_row)
@@ -2723,6 +2732,11 @@ class MainWindow(QMainWindow):
         for button in self.nav_group.buttons():
             if button.property("viewKey") == view:
                 button.setChecked(True)
+        if view == "recycle":
+            self.content_stack.setCurrentIndex(2)
+            self.trash_browser.refresh_actors()
+            self.trash_browser.refresh()
+            return
         if view == "actors":
             self.content_stack.setCurrentIndex(1)
             self.actor_library.go_back()
@@ -2894,6 +2908,29 @@ class MainWindow(QMainWindow):
         if not movie:
             return
         self.delete_movie_from_library(movie["id"])
+
+    def trash_current(self) -> None:
+        movie = self.current_movie()
+        if not movie:
+            return
+        answer = QMessageBox.question(
+            self, "移出资料库",
+            f"把「{movie.get('title','')}」移出资料库？\n\n"
+            "影片文件会保留在硬盘上，不会删除。\n"
+            "可以在「回收站」页面恢复或彻底删除。",
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            core.trash_movie_record(movie["id"])
+        except (ValueError, OSError) as exc:
+            self.show_error(str(exc))
+            return
+        if self.current_movie_id == movie["id"]:
+            self.current_movie_id = None
+            self.detail_stack.setCurrentIndex(0)
+        self.load_all()
+        self.statusBar().showMessage("已移出资料库，可在回收站页面找到", 5000)
 
     def delete_movie_from_library(self, movie_id: int) -> None:
         movie = get_movie(movie_id)
