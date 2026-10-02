@@ -1801,6 +1801,7 @@ class MainWindow(QMainWindow):
         self.library_scroll.viewport().installEventFilter(self)
         self.build_sticky_header()
         self.library_scroll.verticalScrollBar().valueChanged.connect(self.update_sticky_header)
+        self.library_scroll.verticalScrollBar().valueChanged.connect(self.update_row_indicator)
         self.library_scroll.verticalScrollBar().rangeChanged.connect(lambda *_: self.update_sticky_header())
         self.splitter.addWidget(self.library_scroll)
         self.detail = self.build_detail()
@@ -1931,7 +1932,7 @@ class MainWindow(QMainWindow):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
         navs = [
-            ("all", "▦   全部影片"), ("actors", "演员"), ("favorite", "♥   我的喜欢"), ("unwatched", "◷   还没看过"),
+            ("all", "▦   全部影片"), ("actors", "☺   演员"), ("favorite", "♥   我的喜欢"), ("unwatched", "◷   还没看过"),
             ("unmatched", "?   待匹配资料"), ("duplicates", "⧉   重复影片"), ("delete", "⌫   待处理"),
             ("recycle", "♻   回收站"),
         ]
@@ -2021,9 +2022,7 @@ class MainWindow(QMainWindow):
         self.actor_scroll = NativeScrollArea(horizontal_only=True)
         self.actor_scroll.setWidgetResizable(True)
         self.actor_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        self.actor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.actor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.actor_scroll.setFixedHeight(184)
+        self.actor_scroll.setFixedHeight(sys.platform == 'win32' and 198 or 184)
         set_background(self.actor_scroll.viewport(), "#101115")
         self.actor_container = QWidget()
         set_background(self.actor_container, "#101115")
@@ -2186,9 +2185,10 @@ class MainWindow(QMainWindow):
         self.detail_layout.addWidget(screenshot_hint)
         self.screenshot_scroll = NativeScrollArea(horizontal_only=True)
         self.screenshot_scroll.setWidgetResizable(False)
-        self.screenshot_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.screenshot_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.screenshot_scroll.setFixedHeight(252)
+        if sys.platform != 'win32':
+            self.screenshot_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.screenshot_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.screenshot_scroll.setFixedHeight(sys.platform == 'win32' and 266 or 252)
         set_background(self.screenshot_scroll.viewport(), "#131419")
         self.screenshot_container = QWidget()
         set_background(self.screenshot_container, "#131419")
@@ -2407,10 +2407,11 @@ class MainWindow(QMainWindow):
         if not self.actors_expanded:
             for index, chip in enumerate(chips):
                 self.actor_layout.addWidget(chip, 0, index)
-            self.actor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self.actor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            if sys.platform != 'win32':
+                self.actor_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+                self.actor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             self.actor_container.setMinimumSize(max(0, len(chips) * 136), 180)
-            self.actor_scroll.setFixedHeight(184)
+            self.actor_scroll.setFixedHeight(sys.platform == 'win32' and 198 or 184)
             return
         available = max(136, self.actor_scroll.viewport().width() - 8)
         columns = max(1, available // 136)
@@ -2638,6 +2639,28 @@ class MainWindow(QMainWindow):
         card_height = max((card.sizeHint().height() for card in self.cards), default=0)
         self.grid_widget.setFixedHeight(rows * card_height + max(0, rows - 1) * 18)
         self.grid.activate()
+        self._grid_columns = columns
+        self._grid_rows = rows
+        self._row_height = card_height + 18
+        self.update_row_indicator()
+
+    def update_row_indicator(self, *_):
+        rows = getattr(self, '_grid_rows', 0)
+        height = getattr(self, '_row_height', 0)
+        if not rows or not height or rows <= 1:
+            if hasattr(self, 'row_indicator'):
+                self.row_indicator.hide()
+            return
+        if not hasattr(self, 'row_indicator'):
+            return
+        bar = self.library_scroll.verticalScrollBar()
+        value = bar.value()
+        viewport_h = self.library_scroll.viewport().height()
+        first = min(rows, value // max(1, height) + 1)
+        last = min(rows, (value + viewport_h) // max(1, height))
+        text = f"第 {first} 排 · 共 {rows} 排" if last <= first else f"第 {first}–{last} 排 · 共 {rows} 排"
+        self.row_indicator.setText(text)
+        self.row_indicator.show()
 
     def build_sticky_header(self):
         self.is_sticky = False
@@ -2649,8 +2672,7 @@ class MainWindow(QMainWindow):
         self.compact_actor_scroll = NativeScrollArea(horizontal_only=True)
         self.compact_actor_scroll.setFrameShape(QFrame.Shape.NoFrame)
         self.compact_actor_scroll.setWidgetResizable(True)
-        self.compact_actor_scroll.setFixedHeight(76)
-        self.compact_actor_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.compact_actor_scroll.setFixedHeight(sys.platform == 'win32' and 90 or 76)
         set_background(self.compact_actor_scroll.viewport(), "#101115")
         self.compact_actor_container = QWidget()
         set_background(self.compact_actor_container, "#101115")
@@ -2672,7 +2694,13 @@ class MainWindow(QMainWindow):
         while self.filter_layout.count():
             self.filter_layout.takeAt(0)
         self.filter_layout.addWidget(self.result_label, 0, 0)
-        self.filter_layout.addWidget(self.auto_match_button, 0, 1, Qt.AlignmentFlag.AlignRight)
+        if not hasattr(self, "row_indicator"):
+            # Reuse one persistent label: recreating it on every reflow left
+            # detached copies stacked on the filter bar.
+            self.row_indicator = QLabel("")
+            self.row_indicator.setObjectName("rowIndicator")
+        self.filter_layout.addWidget(self.row_indicator, 0, 1, Qt.AlignmentFlag.AlignRight)
+        self.filter_layout.addWidget(self.auto_match_button, 0, 2, Qt.AlignmentFlag.AlignRight)
         controls = [self.favorite_filter_combo, self.rating_filter_combo, self.sort_combo]
         if not self.reset_filters_button.isHidden():
             controls.append(self.reset_filters_button)
@@ -2703,7 +2731,7 @@ class MainWindow(QMainWindow):
     def update_sticky_header(self, *_):
         if not hasattr(self, "sticky_header"):
             return
-        actor_height = 81 if self.compact_actor_chips else 0
+        actor_height = (95 if sys.platform == 'win32' else 81) if self.compact_actor_chips else 0
         threshold = max(1, self.filter_slot.y() - actor_height - 6)
         pinned = self.library_scroll.verticalScrollBar().value() >= threshold
         if pinned != self.is_sticky:
@@ -2726,6 +2754,10 @@ class MainWindow(QMainWindow):
         if pinned:
             height = actor_height + self.filter_bar.height() + 14
             self.sticky_header.setGeometry(0, 0, self.library_scroll.viewport().width(), height)
+            self.sticky_header.setAutoFillBackground(True)
+            palette = self.sticky_header.palette()
+            palette.setColor(palette.ColorRole.Window, QColor("#101115"))
+            self.sticky_header.setPalette(palette)
             self.sticky_header.raise_()
 
     def set_view(self, view: str) -> None:
@@ -3405,6 +3437,19 @@ QPushButton#primary:hover { background:#bc3f33; }
 #dangerText:hover { color:white; background:#482321; border-color:#985149; }
 #compactText { color:#9b9da3; border:0; background:transparent; padding:5px 8px; }
 #compactText:hover { color:#f0ece5; background:#202126; }
+QScrollBar:vertical { background:#17181d; width:14px; border:0; }
+QScrollBar::handle:vertical { background:#3d3f47; border-radius:7px; min-height:40px; margin:2px; }
+QScrollBar::handle:vertical:hover { background:#565965; }
+QScrollBar::handle:vertical:pressed { background:#6e7180; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; border:0; background:none; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:#202126; }
+QScrollBar:horizontal { background:#17181d; height:14px; border:0; }
+QScrollBar::handle:horizontal { background:#3d3f47; border-radius:7px; min-width:40px; margin:2px; }
+QScrollBar::handle:horizontal:hover { background:#565965; }
+QScrollBar::handle:horizontal:pressed { background:#6e7180; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width:0; border:0; background:none; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background:#202126; }
+#rowIndicator { color:#c9c9ce; background:#1b1c22; border:1px solid #34363d; border-radius:10px; padding:3px 12px; font-size:11px; }
 #actorRefresh { color:#d9d5ce; font-size:20px; border:0; background:transparent; padding:2px 8px; }
 #actorRefresh:hover { color:white; background:#27282e; border-radius:8px; }
 #actorStripTitle { color:#bbb7af; font-size:11px; font-weight:600; }

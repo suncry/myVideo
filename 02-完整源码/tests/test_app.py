@@ -626,9 +626,14 @@ class FilmLibraryTests(unittest.TestCase):
             window.actor_scroll.resize(700, 166)
             self.assertEqual(len(window.actor_chips), 30)
             self.assertEqual(window.actor_layout.rowCount(), 1)
+            import sys as _sys
+            expected_policy = (
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOn if _sys.platform == 'win32'
+                else Qt.ScrollBarPolicy.ScrollBarAsNeeded
+            )
             self.assertEqual(
                 window.actor_scroll.horizontalScrollBarPolicy(),
-                Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+                expected_policy,
             )
             window.actors_expanded = True
             window.load_actor_strip()

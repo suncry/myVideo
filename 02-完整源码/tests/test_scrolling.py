@@ -3,7 +3,7 @@ from pathlib import Path
 from unittest import mock
 from PySide6.QtCore import QPoint,QPointF,Qt
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtWidgets import QApplication,QStyle
+from PySide6.QtWidgets import QApplication,QLabel,QStyle
 from PySide6.QtTest import QTest
 import app as core,desktop,privacy
 
@@ -81,3 +81,46 @@ class ScrollingTests(unittest.TestCase):
             self.w.resize(*size);QTest.qWait(30)
             self.assertEqual(self.w.sticky_header.width(),self.w.library_scroll.viewport().width())
             self.assertIs(self.w.filter_bar.parentWidget(),self.w.sticky_header)
+
+    def test_reflow_keeps_single_row_indicator(self):
+        w=self.w
+        for _ in range(3):
+            w.reflow_filters();self.qt.processEvents()
+        indicators=[label for label in w.filter_bar.findChildren(QLabel) if label.objectName()=='rowIndicator']
+        self.assertEqual(len(indicators),1)
+        self.assertIs(indicators[0],w.row_indicator)
+
+    def test_actor_strip_wheel_glides_smoothly_to_target(self):
+        import sys
+        if sys.platform!='win32':return
+        area=self.w.actor_scroll;bar=area.horizontalScrollBar()
+        if bar.maximum()<24:self.skipTest('actor strip fits without overflow')
+        target=max(bar.minimum(),min(bar.maximum(),bar.value()+160))
+        pos=QPoint(30,30);global_pos=area.viewport().mapToGlobal(pos)
+        event=QWheelEvent(QPointF(pos),QPointF(global_pos),QPoint(0,-160),QPoint(0,-120),Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier,Qt.ScrollPhase.ScrollUpdate,False)
+        QApplication.sendEvent(area.viewport(),event);self.qt.processEvents()
+        self.assertGreater(bar.value(),0)
+        self.assertLess(bar.value(),target)
+        QTest.qWait(700)
+        self.assertEqual(bar.value(),target)
+
+    def test_expanded_actor_grid_wheel_scrolls_the_page(self):
+        import sys
+        if sys.platform!='win32':return
+        w=self.w
+        w.actors_expanded=True;w.reflow_actor_chips();self.qt.processEvents()
+        self.assertEqual(w.actor_scroll.horizontalScrollBar().maximum(),0)
+        area=w.actor_scroll;pos=QPoint(30,30);global_pos=area.viewport().mapToGlobal(pos)
+        event=QWheelEvent(QPointF(pos),QPointF(global_pos),QPoint(0,-160),QPoint(0,-120),Qt.MouseButton.NoButton,Qt.KeyboardModifier.NoModifier,Qt.ScrollPhase.ScrollUpdate,False)
+        QApplication.sendEvent(area.viewport(),event);self.qt.processEvents()
+        self.assertGreater(w.library_scroll.verticalScrollBar().value(),0)
+        self.assertEqual(area.horizontalScrollBar().value(),0)
+
+    def test_actor_nav_button_matches_other_menu_icons(self):
+        for button in self.w.nav_group.buttons():
+            if button.property('viewKey')=='actors':
+                text=button.text()
+                self.assertTrue(text.endswith('演员'))
+                self.assertFalse(text.startswith('演员'))
+                return
+        self.fail('actors nav button missing')
