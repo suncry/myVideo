@@ -30,13 +30,13 @@ def forward_wheel(widget, event):
 class OverlayScrollStyle(QProxyStyle):
     def styleHint(self, hint, option=None, widget=None, returnData=None):
         if hint == QStyle.StyleHint.SH_ScrollBar_Transient:
-            return 1
+            return 0 if sys.platform == 'win32' else 1
         return super().styleHint(hint, option, widget, returnData)
 
     def pixelMetric(self, metric, option=None, widget=None):
-        if sys.platform=='win32' and metric==QStyle.PixelMetric.PM_ScrollBarExtent:return 8
+        if sys.platform=='win32' and metric==QStyle.PixelMetric.PM_ScrollBarExtent:return 14
         if metric == QStyle.PixelMetric.PM_ScrollView_ScrollBarOverlap:
-            return self.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, option, widget)
+            return 0 if sys.platform == 'win32' else self.pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, option, widget)
         return super().pixelMetric(metric, option, widget)
 
 
@@ -72,10 +72,18 @@ class NativeScrollArea(QScrollArea):
 
     def wheelEvent(self, event):
         delta = event.pixelDelta() if not event.pixelDelta().isNull() else event.angleDelta()
-        if self.horizontal_only and abs(delta.y()) >= abs(delta.x()) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-            # Let the containing library consume vertical gestures even over actors.
-            forward_wheel(self, event)
-            return
+        if self.horizontal_only:
+            if sys.platform == 'win32':
+                # On Windows, vertical wheel scrolls the actor strip horizontally so users can scroll without Shift.
+                if abs(delta.y()) >= abs(delta.x()) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    bar = self.horizontalScrollBar()
+                    bar.setValue(bar.value() - delta.y())
+                    event.accept()
+                    return
+            else:
+                if abs(delta.y()) >= abs(delta.x()) and not event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+                    forward_wheel(self, event)
+                    return
         super().wheelEvent(event)
 
 
